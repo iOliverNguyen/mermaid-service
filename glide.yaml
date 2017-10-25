@@ -1,0 +1,3 @@
+package: github.com/ng-vu/mermaid-service
+import:
+- package: github.com/hashicorp/golang-lru
