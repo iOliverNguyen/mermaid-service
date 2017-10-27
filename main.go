@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	lru "github.com/hashicorp/golang-lru"
 )
@@ -174,5 +175,11 @@ func generate(input []byte) ([]byte, error) {
 		log.Println("Unable to read back graph data", err)
 		return nil, err
 	}
-	return output, nil
+
+	return cleanup(output), nil
+}
+
+// SVG is XHTML. If we include <br> in the output, we must use <br/>, etc.
+func cleanup(s []byte) []byte {
+	return []byte(strings.Replace(string(s), "<br>", "<br/>", -1))
 }
