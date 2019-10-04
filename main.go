@@ -1,5 +1,7 @@
 package main
 
+//go:generate go-bindata index.html
+
 import (
 	"encoding/base64"
 	"errors"
@@ -8,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +23,7 @@ var (
 	listen   = flag.String("listen", ":8080", "HTTP Address to listen on")
 	ncache   = flag.Int("cache", 256, "Number of cached items")
 	external = flag.Bool("external", false, "Serve external index.html instead of bundling resources")
+	mmdc     = flag.String("mmdc", "mmdc", "Custom command mmdc to run")
 
 	cache      *lru.Cache
 	resPath    string
@@ -41,7 +45,7 @@ func main() {
 		log.Println("Serve bundled resources")
 
 		var err error
-		staticData, err = indexHtmlBytes()
+		staticData, err = index_html()
 		if err != nil {
 			panic(err)
 		}
@@ -55,6 +59,7 @@ func main() {
 
 	http.HandleFunc("/", indexHandler)
 	http.Handle("/diagram/", http.StripPrefix("/diagram/", http.HandlerFunc(diagramHandler)))
+	http.Handle("/g", http.HandlerFunc(gHandler))
 
 	log.Println("Server is listening on", *listen)
 	err = http.ListenAndServe(*listen, nil)
@@ -120,6 +125,37 @@ func diagramHandler(w http.ResponseWriter, req *http.Request) {
 	writeResponse(w, output)
 }
 
+func gHandler(w http.ResponseWriter, req *http.Request) {
+	rawInput, err := url.QueryUnescape(req.URL.RawQuery)
+	log.Println("Handle /g", rawInput, err)
+
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Bad request")
+		return
+	}
+	if rawInput == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Bad request")
+		return
+	}
+
+	if output := getFromCache(rawInput); output != nil {
+		writeResponse(w, output)
+		return
+	}
+
+	output, err := generate([]byte(rawInput))
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Unable to handle request: %v", err)
+		return
+	}
+
+	addToCache(rawInput, output)
+	writeResponse(w, output)
+}
+
 func writeResponse(w http.ResponseWriter, output []byte) {
 	w.Header().Add("Content-Type", "image/svg+xml")
 	w.Header().Add("Cache-Control", "max-stale=31536000")
@@ -154,7 +190,10 @@ func generate(input []byte) ([]byte, error) {
 
 	inputFile := f.Name()
 	outputFile := inputFile + ".svg"
-	cmd := exec.Command("mmdc", "-i", inputFile, outputFile)
+
+	mmdcCmdArgs := strings.Split(*mmdc, " ")
+	args := append(mmdcCmdArgs[1:], "-i", inputFile, outputFile)
+	cmd := exec.Command(mmdcCmdArgs[0], args...)
 	cmdOutput, err := cmd.CombinedOutput()
 
 	defer func() {

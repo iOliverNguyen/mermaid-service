@@ -13,11 +13,14 @@
 <body>
     <div class="main">
         <div class="left">
+            <pre>&nbsp;</pre>
             <textarea id="input"></textarea>
             <div id="error">Error</div>
+            <pre>&nbsp;</pre>
         </div>
         <div class="right">
-            <a id="export" target="_blank" href="#">➚</a>
+            <a class="export" id="export-url" target="_blank" href="#">➚</a>
+            <a class="export" id="export-md" target="_blank" href="#">Copy Markdown</a>
             <div id="graph"></div>
         </div>
         <div class="more">
@@ -58,9 +61,37 @@ another task     :24d
 `
         ]
 
+        const $pres = document.querySelectorAll('.left pre')
+        $pres[0].innerText = "<img src='" + buildUrl()
+        $pres[1].innerText = "'>"
 
-        var rendering = false
+        let rendering = false;
         const $input = document.getElementById('input')
+
+        const $exportMd = document.getElementById('export-md')
+        $exportMd.addEventListener('click', (event) => {
+            event.preventDefault()
+            const value = $input.value.split('\n')
+                .map((line) => {
+                    if (line.trim() === '') return ''
+                    let l = line.trimRight()
+                    return l.endsWith(';') ? l : l + ';'
+                })
+                .filter((line) => line)
+                .join('\n')
+            $input.value = value
+
+            updateExport()
+            render()
+            navigator.permissions.query({name: "clipboard-write"}).then((result) => {
+                if (result.state !== "granted" && result.state !== "prompt") {
+                    alert('Can not copy to clipboard!')
+                    return
+                }
+                const data = buildMd(value)
+                return navigator.clipboard.writeText(data).then(() => $exportMd.innerText = 'Copied!')
+            }).catch((err) => alert(`Can not copy to clipboard: ${err}!`));
+        })
 
         $input.innerHTML = samples[0]
         for (let i = 0; i < samples.length; i++) {
@@ -74,20 +105,20 @@ another task     :24d
         }
 
         $input.onkeydown = () => {
-            updateExport()
-            if (!rendering) {
-                rendering = true
-                setTimeout(render, 50)
-            }
+            setTimeout(() => {
+                updateExport()
+                if (!rendering) {
+                    rendering = true
+                    setTimeout(render, 50)
+                }
+            }, 50)
         }
 
-        mermaid.initialize({
-            startOnLoad: false
-        })
+        mermaid.initialize({ startOnLoad: false })
         updateExport()
         setTimeout(render, 0)
 
-        var count = 0
+        let count = 0;
         function render() {
             try {
                 const graphDefinition = $input.value
@@ -133,15 +164,23 @@ another task     :24d
         }
 
         function base64EncodingUTF8(str) {
-            var encoded = new TextEncoder('utf-8').encode(str);        
-            var b64Encoded = base64js.fromByteArray(encoded);
+            const encoded = new TextEncoder('utf-8').encode(str);
+            const b64Encoded = base64js.fromByteArray(encoded);
             return b64Encoded;
         }
 
         function updateExport() {
-            const $export = document.getElementById('export')
-            $export.href = '/diagram/' + base64EncodingUTF8($input.value)
+            const $exportUrl = document.getElementById('export-url')
+            $exportUrl.href = '/diagram/' + base64EncodingUTF8($input.value)
                 .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+/, '')
+        }
+
+        function buildUrl() {
+            return location.protocol + '//' + location.host + '/g?'
+        }
+
+        function buildMd(input) {
+            return $pres[0].innerText + '\n' + input + '\n' + $pres[1].innerText
         }
     </script>
     <style>
@@ -149,6 +188,7 @@ another task     :24d
         body {
             height: 100%;
             margin: 0;
+            user-select: none;
         }
 
         .main {
@@ -180,6 +220,10 @@ another task     :24d
             position: relative;
         }
 
+        .left pre {
+            user-select: text;
+        }
+
         #graph {
             flex: 0px 1 0;
             text-align: center;
@@ -191,6 +235,7 @@ another task     :24d
             font-size: 9pt;
             padding: 20px 20px 120px 20px;
             resize: none;
+            user-select: text;
         }
 
         #error {
@@ -207,21 +252,29 @@ another task     :24d
             visibility: hidden;
         }
 
-        #export {
+        .export {
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 9pt;
+            font-size: 8pt;
             position: absolute;
             top: 0;
             left: -30px;
             color: #fff;
             padding: 8px 12px;
+            height: 13px;
             cursor: pointer;
             text-decoration: none;
             outline: none;
-            color: rgb(255, 255, 255);
             background-color: rgb(16, 142, 233);
             border-color: rgb(16, 142, 233);
             border-radius: 4px;
+        }
+
+        #export-url {
+            left: -30px;
+        }
+
+        #export-md {
+            left: 10px;
         }
 
         #export:hover {
